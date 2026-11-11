@@ -1,20 +1,29 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""The OpenRouter settings section: base URL, API key, extra model IDs, connection check."""
+"""Server, API key, extra model IDs and connection check."""
 from __future__ import annotations
+
 
 from slidemage.plugin_api import Host, Widget
 
-from .provider import DEFAULT_BASE_URL, CompatibleProvider
-from .route import CompatibleRoute
+from .provider import DEFAULT_BASE_URL, SERVERS, CompatibleProvider, host_of, server_name
+from .route import CompatibleRoute, _base_url
 
 
 def build(host: Host, route: CompatibleRoute) -> Widget:
-    """Settings → AI → OpenRouter; built only when the Settings sheet opens."""
-    from PySide6.QtWidgets import QLineEdit, QPushButton
+    """Settings → AI → OpenAI-compatible; built only when Settings opens."""
+    from PySide6.QtWidgets import QComboBox, QLineEdit, QPushButton
 
     page = host.Page()
     settings = host.settings()
+
+    server = QComboBox()
+    for name, address, _key_page in SERVERS.values():
+        server.addItem(name, address)
+    server.addItem("Other", "")
+    selected = server.findData(_base_url(host).rstrip("/"))
+    server.setCurrentIndex(selected if selected >= 0 else server.count() - 1)
+    page.body.addWidget(host.Field("Server", server))
 
     def text_setting(key: str, label: str, placeholder: str, after_save) -> QLineEdit:
         """A line edit for one string setting, saved when editing finishes and the text changed."""
@@ -36,24 +45,33 @@ def build(host: Host, route: CompatibleRoute) -> Widget:
         page.body.addWidget(host.Field(label, field))
         return field
 
-    url_field = text_setting("base_url", "Base URL", DEFAULT_BASE_URL, route.refresh_models)
+    url_field = text_setting("base_url", "Base URL", DEFAULT_BASE_URL, lambda: server_changed(False))
+    url_field.setText(_base_url(host))
+    url_field.parentWidget().setVisible(not server.currentData())
 
     key_field = QLineEdit()
     key_field.setEchoMode(QLineEdit.EchoMode.Password)
-    key_field.setPlaceholderText("API key from openai_compatible.ai/keys")
+    key_field.setPlaceholderText("API key for the selected server")
+    url_field.textChanged.connect(lambda _text: key_field.clear())
     key_note = host.caption("")
 
     def key_note_text() -> str:
-        where = route.credentials.where()
-        if where:
-            return f"Key saved in the {where}. Sent to the base URL above."
-        return "No key yet. It will be stored on this computer (keychain or a private file) and sent to the base URL above."
+        address = _base_url(host)
+        hostname = host_of(address)
+        where = route.credentials.where(name=hostname)
+        storage = f"Key saved in the {where}." if where else "No key yet. Stored on this computer (keychain or a private file)."
+        key_page = f" Get a key: {SERVERS[hostname][2]}." if hostname in SERVERS else ""
+        return f"{storage} Sent to {server_name(address)} ({address}).{key_page}"
 
     key_note.setText(key_note_text())
 
     def save_key() -> None:
         try:
-            route.credentials.set(key_field.text())
+            hostname = host_of(_base_url(host))
+            if key_field.text():
+                route.credentials.set(key_field.text(), name=hostname)
+            else:
+                route.credentials.clear(name=hostname)
         except OSError as exc:
             key_note.setText(f"Could not save the key: {exc}")
             return
@@ -76,10 +94,28 @@ def build(host: Host, route: CompatibleRoute) -> Widget:
     closed = [False]
     page.destroyed.connect(lambda: closed.__setitem__(0, True))
 
+    def server_changed(choose: bool = True) -> None:
+        if choose:
+            address = server.currentData() or url_field.text().strip()
+            url_field.setText(address)
+            settings.set("base_url", address)
+            settings.save()
+        url_field.parentWidget().setVisible(not server.currentData())
+        key_field.clear()  # typed keys belong to the server shown when they were entered
+        key_note.setText(key_note_text())
+        status.clear()
+        check.setEnabled(True)
+        route.refresh_models()
+        if choose:
+            page.changed.emit()
+
+    server.currentIndexChanged.connect(lambda _index: server_changed())
+
     def check_connection() -> None:
         # The key field stays empty when a key is stored, so an empty field means the stored one.
-        provider = CompatibleProvider(base_url=url_field.text().strip() or DEFAULT_BASE_URL,
-                                      api_key=key_field.text() or route.credentials.get() or "")
+        address = url_field.text().strip() or DEFAULT_BASE_URL
+        provider = CompatibleProvider(base_url=address,
+                                      api_key=key_field.text() or route.credentials.get(name=host_of(address)) or "")
         status.setText("Checking connection…")
         check.setEnabled(False)
 

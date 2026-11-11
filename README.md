@@ -1,17 +1,24 @@
-# OpenRouter for SlideMage
+# OpenAI-compatible for SlideMage
 
-Use [OpenRouter](https://openrouter.ai/)'s models as SlideMage's AI: one API key gives you models from Anthropic,
-OpenAI, Google, DeepSeek, Mistral and many more, for chat, image descriptions, translation and fixes.
+Use OpenAI, Mistral, OpenRouter, LM Studio or any other OpenAI-compatible server as SlideMage's AI for chat,
+image descriptions, translation and fixes.
 
-1. Get a key at [openrouter.ai/keys](https://openrouter.ai/keys).
-2. Paste it under **Settings → AI → OpenRouter** and save it.
-3. Choose a model in **AI setup** (the ▾ of the AI switch), for example `deepseek/deepseek-chat`.
+1. Open **Settings → AI → OpenAI-compatible** and choose your **Server**:
 
-The plugin works with any OpenAI-compatible server too: set its **Base URL** (for example
-`https://api.openai.com/v1`, or `http://localhost:1234/v1` for LM Studio) and its key. A model the server does
-not list can be added under **Extra model IDs**.
+   | Server | Setup |
+   | --- | --- |
+   | OpenAI | Choose OpenAI and get a key at [platform.openai.com/api-keys](https://platform.openai.com/api-keys). |
+   | Mistral | Choose Mistral and get a key at [console.mistral.ai/api-keys](https://console.mistral.ai/api-keys). |
+   | OpenRouter | Choose OpenRouter and get a key at [openrouter.ai/keys](https://openrouter.ai/keys). |
+   | LM Studio | Choose Other and enter `http://localhost:1234/v1` as the Base URL; no key is needed unless your server requires one. |
+   | Another server | Choose Other and enter its OpenAI-compatible Base URL and key, if required. |
 
-Your slides and prompts go to the server you set, and the model provider OpenRouter routes them to.
+2. Paste the server's **API key** and click **Save key**. Each server host has its own stored key; switching
+   servers restores that server's key. An empty save clears only the current server's key.
+3. Click **Check connection**, then choose a model in **AI setup** (the ▾ of the AI switch).
+   OpenRouter defaults to `openrouter/auto`. Add models missing from the list under **Extra model IDs**.
+
+Your slides and prompts go to the server you choose, and to any model provider it routes them to.
 
 ## Development
 

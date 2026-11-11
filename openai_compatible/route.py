@@ -1,17 +1,16 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""OpenRouter's public AI route and asynchronous model cache."""
+"""The OpenAI-compatible AI route and asynchronous model cache."""
 from __future__ import annotations
 
-from urllib.parse import urlsplit
 from typing import Any
 
 from slidemage.plugin_api import Host, Route, RouteContext, Widget
 
 from .tasks import CHAT, IMAGE_DESCRIPTION, TASKS, TASK_LABELS
-from .provider import DEFAULT_BASE_URL, CompatibleModel, CompatibleProvider
+from .provider import DEFAULT_BASE_URL, CompatibleModel, CompatibleProvider, host_of, server_name
 
-KEY_MESSAGE = "Add an API key under Settings → AI → OpenRouter."
+KEY_MESSAGE = "Add an API key under Settings → AI → OpenAI-compatible."
 
 
 # The route reads the plugin's own settings through the host: RouteContext.settings is the same store.
@@ -29,13 +28,12 @@ def _extra_models(host: Host) -> list[str]:
 
 
 def _is_local(address: str) -> bool:
-    host = urlsplit(address).hostname or ""
+    host = host_of(address)
     return host == "localhost" or host.startswith("127.") or host == "::1"
 
 
 class CompatibleRoute:
-    id = "openrouter"
-    service = "OpenRouter"
+    id = "openai-compatible"
     is_local = False
     tasks = frozenset(TASKS)
 
@@ -47,16 +45,21 @@ class CompatibleRoute:
         self._loading_at: str | None = None
         self._generation = 0
 
+    @property
+    def service(self) -> str:
+        return server_name(_base_url(self.host))
+
     def problem(self, ctx: RouteContext, route: Route) -> str:
         if not route.model:
-            return (f"Choose an OpenRouter model for {TASK_LABELS[route.task].lower()} "
+            return (f"Choose a model on {self.service} for {TASK_LABELS[route.task].lower()} "
                     "under AI setup (the ▾ of the AI switch).")
-        if not self.credentials.get() and not _is_local(_base_url(self.host)):
+        address = _base_url(self.host)
+        if not self.credentials.get(name=host_of(address)) and not _is_local(address):
             return KEY_MESSAGE
         return ""
 
     def default_choice(self, task: str) -> str:
-        return ""
+        return "openrouter/auto" if host_of(_base_url(self.host)) == "openrouter.ai" else ""
 
     def choice_label(self, choice: str) -> str:
         return choice
@@ -68,8 +71,7 @@ class CompatibleRoute:
         return bool(choice)
 
     def work_label(self, route: Route) -> str:
-        address = _base_url(self.host)
-        return f"{route.model or 'no model chosen'} · {urlsplit(address).hostname or address}"
+        return f"{route.model or 'no model chosen'} · {self.service}"
 
     def model_choices(self, ctx: RouteContext, task: str) -> list[str]:
         """Return at once. Only refresh_models' worker contacts the server."""
@@ -84,7 +86,7 @@ class CompatibleRoute:
     def refresh_models(self) -> None:
         """Refresh the cache off-thread; a newer request supersedes an older one."""
         address = _base_url(self.host)
-        provider = CompatibleProvider(base_url=address, api_key=self.credentials.get() or "")
+        provider = CompatibleProvider(base_url=address, api_key=self.credentials.get(name=host_of(address)) or "")
         self._generation += 1
         generation = self._generation
         self._loading_at = address
@@ -106,7 +108,7 @@ class CompatibleRoute:
         address = _base_url(self.host)
         cached = self._models if self._models_at == address else []
         known = next((model for model in cached if model.id == route.model), None)
-        return CompatibleProvider(route.model, address, self.credentials.get() or "",
+        return CompatibleProvider(route.model, address, self.credentials.get(name=host_of(address)) or "",
                                   sees_images=known.images if known else True)
 
     def draft_backend(self, ctx: RouteContext, route: Route, cancel: Any = None) -> None:

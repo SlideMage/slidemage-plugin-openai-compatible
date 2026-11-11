@@ -1,11 +1,11 @@
-id = "openrouter"
-name = "OpenRouter"
+id = "openai-compatible"
+name = "OpenAI-compatible"
 version = "1.0.0"
 api_version = 1
 requires_slidemage = ">=9.1"
-summary = "OpenRouter's models as SlideMage's AI, or any OpenAI-compatible server: your key, your model."
+summary = "OpenAI, Mistral, OpenRouter, LM Studio or any other OpenAI-compatible server: your key, your model."
 author = "Jürgen Fleiß, Stefan Palan"
-homepage = "https://github.com/SlideMage/slidemage-plugin-openrouter"
+homepage = "https://github.com/SlideMage/slidemage-plugin-openai-compatible"
 license = "GPL-3.0-or-later"
-needs = ["An API key for OpenRouter or another OpenAI-compatible service"]
-network = ["The server you set (by default openrouter.ai)"]
+needs = ["An API key for your chosen server, unless it runs locally without one"]
+network = ["The OpenAI-compatible server you choose"]

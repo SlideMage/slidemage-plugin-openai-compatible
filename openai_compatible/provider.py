@@ -1,14 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""The OpenRouter provider, and any OpenAI-compatible /chat/completions server.
-
-One API key for OpenRouter's catalogue; with another base URL, any server that
-speaks the OpenAI chat wire format on it. A provider is bound to one model;
-callers hold prompts and result checks, never HTTP. The abortable HTTP plumbing
-is local (see http.py); the neutral types come from the public API. `think` and
-`num_ctx` are accepted and ignored: they are Ollama's options, and reasoning
-models on OpenRouter decide for themselves when to reason.
-"""
+"""A provider for OpenAI-compatible /chat/completions servers."""
 
 from __future__ import annotations
 
@@ -24,10 +16,24 @@ from slidemage.plugin_api import (
 
 from .http import HttpProvider, error_detail
 
-DEFAULT_BASE_URL = "https://openrouter.ai/api/v1"
-SLIDEMAGE_URL = "https://slidemage.org"
+SERVERS = {
+    "api.openai.com": ("OpenAI", "https://api.openai.com/v1", "https://platform.openai.com/api-keys"),
+    "api.mistral.ai": ("Mistral", "https://api.mistral.ai/v1", "https://console.mistral.ai/api-keys"),
+    "openrouter.ai": ("OpenRouter", "https://openrouter.ai/api/v1", "https://openrouter.ai/keys"),
+}
+DEFAULT_BASE_URL = SERVERS["api.openai.com"][1]
 
 Message = dict[str, str]
+
+
+def host_of(base_url: str) -> str:
+    """The server's host name; it keys the server's name, its stored key and its request differences."""
+    return urllib.parse.urlsplit(base_url).hostname or base_url
+
+
+def server_name(base_url: str) -> str:
+    host = host_of(base_url)
+    return SERVERS[host][0] if host in SERVERS else host
 
 
 @dataclass
@@ -40,12 +46,11 @@ class CompatibleModel:
 
 
 class CompatibleProvider(HttpProvider):
-    """A model on OpenRouter, or on another OpenAI-compatible server."""
+    """A model on an OpenAI-compatible server."""
 
     @property
     def service(self) -> str:
-        """The server's name, for messages: OpenRouter itself, or the custom host."""
-        return "OpenRouter" if self.base_url == DEFAULT_BASE_URL else self.host
+        return server_name(self.base_url)
 
     is_local = False
 
@@ -63,20 +68,22 @@ class CompatibleProvider(HttpProvider):
 
     @property
     def host(self) -> str:
-        return urllib.parse.urlsplit(self.base_url).hostname or self.base_url
+        return host_of(self.base_url)
 
     def _headers(self) -> dict[str, str]:
-        headers = {"Content-Type": "application/json", "HTTP-Referer": SLIDEMAGE_URL, "X-Title": "SlideMage"}
+        headers = {"Content-Type": "application/json"}
+        if self.host == "openrouter.ai":
+            headers.update({"HTTP-Referer": "https://slidemage.org", "X-Title": "SlideMage"})
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
         return headers
 
     def _describe_error(self, status: int, detail: str) -> str:
         if status in (401, 403):
-            return "The server refused the API key. Check it under Settings → AI → OpenRouter."
+            return f"{self.service} refused the API key. Check it under Settings → AI → OpenAI-compatible."
         if status == 404 and self.model:
-            return f"The server has no model '{self.model}'. Choose another model in AI setup."
-        return f"{self.host} returned HTTP {status}: {detail}"
+            return f"{self.service} has no model '{self.model}'. Choose another model in AI setup."
+        return f"{self.service} returned HTTP {status}: {detail}"
 
     def chat(
         self, messages: list[Message], *, system: str = "",
@@ -95,9 +102,10 @@ class CompatibleProvider(HttpProvider):
         payload: dict = {
             "model": self.model,
             "messages": turns,
-            "temperature": temperature,
-            "max_tokens": max_tokens,
+            "max_completion_tokens" if self.host == "api.openai.com" else "max_tokens": max_tokens,
         }
+        if self.host != "api.openai.com":
+            payload["temperature"] = temperature
         if schema:
             payload["response_format"] = {"type": "json_schema", "json_schema": {"name": "response", "schema": schema}}
         status, raw = self._send("POST", self.base_url, "/chat/completions", headers=self._headers(),
@@ -118,8 +126,12 @@ class CompatibleProvider(HttpProvider):
             if entry.get("id"):
                 parameters = entry.get("supported_parameters")
                 modalities = (entry.get("architecture") or {}).get("input_modalities")
-                models.append(CompatibleModel(entry["id"], tools=not parameters or "tools" in parameters,
-                                              images=not modalities or "image" in modalities))
+                capabilities = entry.get("capabilities") or {}
+                models.append(CompatibleModel(
+                    entry["id"],
+                    tools=capabilities.get("function_calling", parameters is None or "tools" in parameters),
+                    images=capabilities.get("vision", modalities is None or "image" in modalities),
+                ))
         return models
 
     def list_models(self) -> list[str]:
@@ -137,11 +149,12 @@ class CompatibleProvider(HttpProvider):
         calls' argument pieces joined and parsed once at the end."""
         payload: dict = {
             "model": self.model,
-            "messages": _wire_messages(system, messages, self.sees_images),
+            "messages": _wire_messages(system, messages, self.sees_images, self.host),
             "stream": True,
-            "stream_options": {"include_usage": True},
-            "max_tokens": max_tokens,
+            "max_completion_tokens" if self.host == "api.openai.com" else "max_tokens": max_tokens,
         }
+        if self.host != "api.mistral.ai":
+            payload["stream_options"] = {"include_usage": True}
         if tools:
             payload["tools"] = [{"type": "function", "function": {
                 "name": tool.name, "description": tool.description, "parameters": tool.schema,
@@ -169,14 +182,14 @@ class CompatibleProvider(HttpProvider):
                 try:
                     event = json.loads(data)
                 except ValueError as exc:
-                    raise ProviderError(f"{self.host} sent an unreadable response: {exc}") from exc
+                    raise ProviderError(f"{self.service} sent an unreadable response: {exc}") from exc
                 if not isinstance(event, dict):
                     continue
                 choice = (event.get("choices") or [{}])[0]
                 if event.get("error"):
                     error = event["error"]
                     message = error.get("message") if isinstance(error, dict) else str(error)
-                    raise ProviderError(f"{self.host} returned an error: {message}")
+                    raise ProviderError(f"{self.service} returned an error: {message}")
                 delta = choice.get("delta") or {}
                 for part in (delta.get("content"), delta.get("refusal")):
                     if part:
@@ -197,7 +210,7 @@ class CompatibleProvider(HttpProvider):
         if self._cancelled:
             raise Cancelled("Aborted.")
         if not finish_reason and not saw_done:
-            raise ProviderError(f"{self.host} ended the answer early.")
+            raise ProviderError(f"{self.service} ended the answer early.")
         return AssistantMessage(
             text="".join(text),
             tool_calls=[ToolCall(call["id"] or f"call_{index}", call["name"], _parsed_arguments(call["arguments"]))
@@ -209,7 +222,7 @@ class CompatibleProvider(HttpProvider):
         )
 
 
-def _wire_messages(system: str, messages: list[AgentMessage], sees_images: bool) -> list[dict]:
+def _wire_messages(system: str, messages: list[AgentMessage], sees_images: bool, host: str) -> list[dict]:
     """The agent's neutral history as OpenAI chat messages: the tool calls as the wire's
     assistant tool_calls, each tool result as a "tool" message, and everything a
     ToolResultsMessage carries as images in one user message after its last tool message.
@@ -234,6 +247,8 @@ def _wire_messages(system: str, messages: list[AgentMessage], sees_images: bool)
                 if sees_images:
                     images += result.images
             if images:
+                if host == "api.mistral.ai":
+                    wire.append({"role": "assistant", "content": "Here is the image from the tool."})
                 wire.append({"role": "user", "content": [{"type": "text", "text": "The image from the tool above:"}] + [
                     {"type": "image_url", "image_url": {"url": _data_uri(image)}} for image in images]})
         else:

@@ -15,6 +15,6 @@ def test_activate_registers_one_route_and_one_ai_settings_section():
     route, = host.routes.values()
     section, = host.sections
     assert (route.id, route.service, route.is_local, route.tasks) == (
-        "openrouter", "OpenRouter", False, frozenset(TASKS))
-    assert (section.page, section.title) == ("ai", "OpenRouter")
+        "openai-compatible", "OpenAI", False, frozenset(TASKS))
+    assert (section.page, section.title) == ("ai", "OpenAI-compatible")
     assert section.build == route.build_settings_section

@@ -13,7 +13,24 @@ def test_a_key_is_needed_unless_the_server_is_local():
     host = FakeHost()
     route = CompatibleRoute(host)
     ctx = host.context()
-    route_id = Route("openrouter", CHAT, "deepseek/deepseek-chat")
+    route_id = Route("openai-compatible", CHAT, "a-model")
     assert route.problem(ctx, route_id) == KEY_MESSAGE
+    assert route.service == "OpenAI"
+    assert route.default_choice(CHAT) == ""
+    host.credentials_store.set("openai-key", name="api.openai.com")
+    assert route.problem(ctx, route_id) == ""
+    assert route.provider(ctx, route_id).api_key == "openai-key"
+    host.store.set("base_url", "https://api.mistral.ai/v1")
+    assert route.service == "Mistral"
+    assert route.problem(ctx, route_id) == KEY_MESSAGE
+    assert route.provider(ctx, route_id).api_key == ""
+    assert route.work_label(route_id) == "a-model · Mistral"
+    host.store.set("base_url", "https://openrouter.ai/api/v1/")
+    assert route.service == "OpenRouter"
+    assert route.default_choice(CHAT) == "openrouter/auto"
+    host.credentials_store.set("router-key", name="openrouter.ai")
+    assert route.problem(ctx, route_id) == ""
     host.store.set("base_url", " http://localhost:11434/v1 ")
+    assert route.service == "localhost"
+    assert route.default_choice(CHAT) == ""
     assert route.problem(ctx, route_id) == ""

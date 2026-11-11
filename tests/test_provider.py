@@ -23,11 +23,11 @@ DATA_URI = "data:image/png;base64," + base64.b64encode(PNG).decode()
 def test_chat_sends_the_design_described_request_and_reads_the_reply(server):
     server.body = {"choices": [{"message": {"role": "assistant", "content": "answer"},
                                 "finish_reason": "stop"}]}
-    provider = CompatibleProvider("deepseek/deepseek-chat", base_url=server.url, api_key="k-123")
+    provider = CompatibleProvider("deepseek/deepseek-chat", base_url="https://openrouter.ai/api/v1/", api_key="k-123")
     reply = provider.chat([{"role": "user", "content": "hi"}], system="be brief", images=[PNG],
                           schema={"type": "object"}, temperature=0.1, max_tokens=99, think=True, num_ctx=4096)
     request = server.requests[0]
-    assert (request["method"], request["path"]) == ("POST", "/chat/completions")
+    assert (request["method"], request["path"]) == ("POST", "/api/v1/chat/completions")
     assert request["headers"]["authorization"] == "Bearer k-123"
     assert request["headers"]["http-referer"] == "https://slidemage.org"
     assert request["headers"]["x-title"] == "SlideMage"
@@ -48,9 +48,9 @@ def test_chat_sends_the_design_described_request_and_reads_the_reply(server):
 
 
 def test_a_refused_key_says_where_to_fix_it(server):
-    provider = CompatibleProvider("deepseek/deepseek-chat", base_url=server.url, api_key="k-123")
+    provider = CompatibleProvider("mistral-small-latest", base_url="https://api.mistral.ai/v1", api_key="k-123")
     server.status, server.body = 401, {"error": {"message": "No auth credentials found"}}
-    with pytest.raises(ProviderError, match="refused the API key"):
+    with pytest.raises(ProviderError, match="Mistral refused the API key.*Settings → AI → OpenAI-compatible"):
         provider.chat([{"role": "user", "content": "a"}])
 
 
@@ -60,14 +60,16 @@ def test_models_keep_the_capabilities_the_server_reports(server):
          "architecture": {"input_modalities": ["text", "image"]}},
         {"id": "deepseek/deepseek-chat", "supported_parameters": ["temperature"],
          "architecture": {"input_modalities": ["text"]}},
+        {"id": "unreported"},
     ]}
     provider = CompatibleProvider(base_url=server.url, api_key="k-123")
     models = provider.models()
     assert [(model.id, model.tools, model.images) for model in models] == [
         ("anthropic/claude-sonnet-4.5", True, True),
         ("deepseek/deepseek-chat", False, False),
+        ("unreported", True, True),
     ]
-    assert provider.list_models() == ["anthropic/claude-sonnet-4.5", "deepseek/deepseek-chat"]
+    assert provider.list_models() == ["anthropic/claude-sonnet-4.5", "deepseek/deepseek-chat", "unreported"]
 
 
 def test_a_streamed_turn_joins_text_and_split_tool_arguments(server):
@@ -83,6 +85,9 @@ def test_a_streamed_turn_joins_text_and_split_tool_arguments(server):
     request = server.requests[0]
     assert (request["method"], request["path"]) == ("POST", "/chat/completions")
     assert request["body"]["stream"] is True
+    assert request["body"]["stream_options"] == {"include_usage": True}
+    assert "http-referer" not in request["headers"]
+    assert "x-title" not in request["headers"]
     assert reply.text == "Hello, world"
     assert pieces == ["Hello", ", world"]
     assert [(call.id, call.name, call.input) for call in reply.tool_calls] == [
@@ -112,3 +117,44 @@ def test_tool_results_and_their_images_go_out_after_the_call(server):
             {"type": "image_url", "image_url": {"url": DATA_URI}}]},
     ]
     assert (reply.text, reply.stop) == ("", "end_turn")
+
+
+def test_openai_uses_completion_tokens_without_temperature(server):
+    provider = CompatibleProvider("o3", base_url="https://api.openai.com/v1/", api_key="openai-key")
+    server.body = {"choices": [{"message": {"content": "answer"}, "finish_reason": "stop"}]}
+    assert provider.chat([{"role": "user", "content": "hi"}], temperature=0.1, max_tokens=99).text == "answer"
+    server.body = sse_stream(pieces=("answer",))
+    assert provider.stream_turn("", [UserMessage("hi")], [], lambda _: None, max_tokens=99).text == "answer"
+    assert provider.service == "OpenAI"
+    for request in server.requests:
+        assert request["path"] == "/v1/chat/completions"
+        assert request["body"]["max_completion_tokens"] == 99
+        assert "max_tokens" not in request["body"]
+        assert "temperature" not in request["body"]
+        assert request["headers"]["authorization"] == "Bearer openai-key"
+        assert "http-referer" not in request["headers"]
+        assert "x-title" not in request["headers"]
+
+
+def test_mistral_capabilities_and_tool_image_bridge(server):
+    provider = CompatibleProvider("mistral-small-latest", base_url="https://api.mistral.ai/v1/")
+    server.body = {"data": [
+        {"id": "vision", "capabilities": {"function_calling": True, "vision": True}},
+        {"id": "text", "capabilities": {"function_calling": True, "vision": False}},
+        {"id": "embedding", "capabilities": {"function_calling": False, "vision": False}},
+    ]}
+    assert [(m.id, m.tools, m.images) for m in provider.models()] == [
+        ("vision", True, True), ("text", True, False), ("embedding", False, False)]
+    server.body = sse_stream(pieces=("I see it.",))
+    reply = provider.stream_turn("", [
+        UserMessage("Show me the slide."),
+        AssistantMessage(tool_calls=[ToolCall("imagecall", "render", {})]),
+        ToolResultsMessage([ToolResult("imagecall", "slide", images=[PNG])]),
+    ], [], lambda _: None)
+    request = server.requests[-1]
+    assert "stream_options" not in request["body"]
+    assert request["body"]["max_tokens"] == 16000
+    assert [m["role"] for m in request["body"]["messages"]] == ["user", "assistant", "tool", "assistant", "user"]
+    assert request["body"]["messages"][-2]["content"]
+    assert request["body"]["messages"][-1]["content"][-1] == {"type": "image_url", "image_url": {"url": DATA_URI}}
+    assert (reply.text, reply.usage) == ("I see it.", {"input": 12, "output": 5})
