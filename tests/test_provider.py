@@ -74,7 +74,8 @@ def test_models_keep_the_capabilities_the_server_reports(server):
 
 def test_a_streamed_turn_joins_text_and_split_tool_arguments(server):
     server.content_type = "text/event-stream"
-    server.body = sse_stream(pieces=("Hello", ", world"),
+    server.body = sse_stream(pieces=("Hello", [  # Mistral's reasoning models send a list of parts
+        {"type": "thinking", "thinking": [{"type": "text", "text": "hmm"}]}, {"type": "text", "text": ", world"}]),
                              tool_calls=(("get_weather", ('{"city":', ' "Paris", ', '"unit": "c"}')),))
     provider = CompatibleProvider("deepseek/deepseek-chat", base_url=server.url, api_key="k-123")
     pieces: list[str] = []

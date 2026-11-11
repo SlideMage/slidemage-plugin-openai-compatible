@@ -113,7 +113,7 @@ class CompatibleProvider(HttpProvider):
         body = self._json(status, raw, self._describe_error)
         choice = (body.get("choices") or [{}])[0]
         return ChatReply(
-            text=(choice.get("message") or {}).get("content") or "",
+            text=_text((choice.get("message") or {}).get("content")),
             truncated=choice.get("finish_reason") == "length",
         )
 
@@ -191,7 +191,7 @@ class CompatibleProvider(HttpProvider):
                     message = error.get("message") if isinstance(error, dict) else str(error)
                     raise ProviderError(f"{self.service} returned an error: {message}")
                 delta = choice.get("delta") or {}
-                for part in (delta.get("content"), delta.get("refusal")):
+                for part in (_text(delta.get("content")), delta.get("refusal")):
                     if part:
                         text.append(part)
                         on_text(part)
@@ -254,6 +254,15 @@ def _wire_messages(system: str, messages: list[AgentMessage], sees_images: bool,
         else:
             wire.append({"role": "user", "content": message.text})
     return wire
+
+
+def _text(content) -> str:
+    """A message's answer text: a string, or a list of parts (Mistral's reasoning models), of which only the
+    "text" parts are the answer; "thinking" parts are left out."""
+    if isinstance(content, list):
+        return "".join(part.get("text") or "" for part in content
+                       if isinstance(part, dict) and part.get("type") == "text")
+    return content or ""
 
 
 def _parsed_arguments(arguments: str) -> dict:
