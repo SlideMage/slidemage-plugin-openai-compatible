@@ -58,7 +58,7 @@ class OpenRouterRoute:
 
     def __init__(self, host: Host) -> None:
         self.host = host
-        self._credentials = host.credentials()
+        self.credentials = host.credentials()
         self._models: list[OpenRouterModel] = []
         self._models_at: str | None = None
         self._loading_at: str | None = None
@@ -67,7 +67,7 @@ class OpenRouterRoute:
     def problem(self, ctx: RouteContext, route: Route) -> str:
         if not route.model:
             return _missing_model(route.task)
-        if not self._credentials.get() and not _is_local(_base_url(ctx)):
+        if not self.credentials.get() and not _is_local(_base_url(ctx)):
             return KEY_MESSAGE
         return ""
 
@@ -99,7 +99,7 @@ class OpenRouterRoute:
         """Refresh the cache off-thread; ignore superseded requests and old addresses."""
         source = context if context is not None else self.host
         address = _base_url(source)
-        provider = OpenRouterProvider(base_url=address, api_key=self._credentials.get() or "")
+        provider = OpenRouterProvider(base_url=address, api_key=self.credentials.get() or "")
         self._generation += 1
         generation = self._generation
         self._loading_at = address
@@ -127,7 +127,7 @@ class OpenRouterRoute:
         known = next((model for model in cached if model.id == route.model), None)
         # A text-only verdict needs the server's word about the model's modalities.
         sees_images = not (known and known.input_modalities and not known.sees_images)
-        return OpenRouterProvider(route.model, _base_url(ctx), self._credentials.get() or "",
+        return OpenRouterProvider(route.model, _base_url(ctx), self.credentials.get() or "",
                                   sees_images=sees_images)
 
     def draft_backend(self, ctx: RouteContext, route: Route, cancel: Any = None) -> None:
