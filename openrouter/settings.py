@@ -3,15 +3,13 @@
 """The OpenRouter settings section: base URL, API key, extra model IDs, connection check."""
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from slidemage.plugin_api import Host, Widget
 
 from .provider import DEFAULT_BASE_URL, OpenRouterProvider
-
-if TYPE_CHECKING:
-    from slidemage.plugin_api import Host, Widget
+from .route import OpenRouterRoute
 
 
-def build(host: Host, route: Any) -> Widget:
+def build(host: Host, route: OpenRouterRoute) -> Widget:
     """Settings → AI → OpenRouter; built only when the Settings sheet opens."""
     from PySide6.QtWidgets import QLineEdit, QPushButton
 

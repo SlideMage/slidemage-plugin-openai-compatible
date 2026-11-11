@@ -37,14 +37,6 @@ def _is_local(address: str) -> bool:
     return host == "localhost" or host.startswith("127.") or host == "::1"
 
 
-def _offering(task: str, models: list[OpenRouterModel]) -> list[str]:
-    """The server's model ids that can do `task`; the filters apply only where the
-    server reported capabilities, so an unreporting server offers every model."""
-    return [model.id for model in models
-            if (task != CHAT or not model.supported_parameters or model.supports_tools)
-            and (task != IMAGE_DESCRIPTION or not model.input_modalities or model.sees_images)]
-
-
 class OpenRouterRoute:
     id = "openrouter"
     service = "OpenRouter"
@@ -89,7 +81,12 @@ class OpenRouterRoute:
         if self._models_at != address and self._loading_at != address:
             self.refresh_models(context=ctx)
         cached = self._models if self._models_at == address else []
-        return list(dict.fromkeys(_extra_models(ctx) + _offering(task, cached)))
+        # The capability filters apply only where the server reported capabilities, so an
+        # unreporting server offers every model.
+        offered = [model.id for model in cached
+                   if (task != CHAT or not model.supported_parameters or model.supports_tools)
+                   and (task != IMAGE_DESCRIPTION or not model.input_modalities or model.sees_images)]
+        return list(dict.fromkeys(_extra_models(ctx) + offered))
 
     def refresh_models(self, *, context: RouteContext | None = None) -> None:
         """Refresh the cache off-thread; ignore superseded requests and old addresses."""
