@@ -49,9 +49,30 @@ class Section:
     build: Callable[[], Any]
 
 
+class FakeCredentials:
+    """An in-memory stand-in for the host's secret storage."""
+
+    def __init__(self) -> None:
+        self.secrets: dict[str, str] = {}
+
+    def get(self, name: str = "key") -> str | None:
+        return self.secrets.get(name)
+
+    def set(self, value: str, name: str = "key") -> str:
+        self.secrets[name] = value
+        return "memory"
+
+    def clear(self, name: str = "key") -> None:
+        self.secrets.pop(name, None)
+
+    def where(self, name: str = "key") -> str:
+        return "memory" if name in self.secrets else ""
+
+
 class FakeHost:
     def __init__(self, *, settings: FakeSettings | None = None) -> None:
         self.store = settings if settings is not None else FakeSettings()
+        self.credentials_store = FakeCredentials()
         self.routes: dict[str, Any] = {}
         self.sections: list[Section] = []
         self.pending: list[tuple[Callable, Callable]] = []
@@ -228,7 +249,7 @@ class FakeHost:
         raise NotImplementedError('FakeHost.watch_external_edits')
 
     def credentials(self, env_var: str | None=None) -> Credentials:
-        raise NotImplementedError('FakeHost.credentials')
+        return self.credentials_store
 
     def ai_tools(self, scope: Literal['slide', 'deck']='slide', *, focus_slide: Path | None=None, mode: Literal['ask', 'auto']='auto', cancel: Any=None, workspace: Any=None) -> 'ToolBox':
         raise NotImplementedError('FakeHost.ai_tools')
