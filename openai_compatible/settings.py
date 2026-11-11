@@ -5,11 +5,11 @@ from __future__ import annotations
 
 from slidemage.plugin_api import Host, Widget
 
-from .provider import DEFAULT_BASE_URL, OpenRouterProvider
-from .route import OpenRouterRoute
+from .provider import DEFAULT_BASE_URL, CompatibleProvider
+from .route import CompatibleRoute
 
 
-def build(host: Host, route: OpenRouterRoute) -> Widget:
+def build(host: Host, route: CompatibleRoute) -> Widget:
     """Settings → AI → OpenRouter; built only when the Settings sheet opens."""
     from PySide6.QtWidgets import QLineEdit, QPushButton
 
@@ -40,7 +40,7 @@ def build(host: Host, route: OpenRouterRoute) -> Widget:
 
     key_field = QLineEdit()
     key_field.setEchoMode(QLineEdit.EchoMode.Password)
-    key_field.setPlaceholderText("API key from openrouter.ai/keys")
+    key_field.setPlaceholderText("API key from openai_compatible.ai/keys")
     key_note = host.caption("")
 
     def key_note_text() -> str:
@@ -78,7 +78,7 @@ def build(host: Host, route: OpenRouterRoute) -> Widget:
 
     def check_connection() -> None:
         # The key field stays empty when a key is stored, so an empty field means the stored one.
-        provider = OpenRouterProvider(base_url=url_field.text().strip() or DEFAULT_BASE_URL,
+        provider = CompatibleProvider(base_url=url_field.text().strip() or DEFAULT_BASE_URL,
                                       api_key=key_field.text() or route.credentials.get() or "")
         status.setText("Checking connection…")
         check.setEnabled(False)

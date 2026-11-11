@@ -9,7 +9,7 @@ from typing import Any
 from slidemage.plugin_api import Host, Route, RouteContext, Widget
 
 from .tasks import CHAT, IMAGE_DESCRIPTION, TASKS, TASK_LABELS
-from .provider import DEFAULT_BASE_URL, OpenRouterModel, OpenRouterProvider
+from .provider import DEFAULT_BASE_URL, CompatibleModel, CompatibleProvider
 
 KEY_MESSAGE = "Add an API key under Settings → AI → OpenRouter."
 
@@ -33,7 +33,7 @@ def _is_local(address: str) -> bool:
     return host == "localhost" or host.startswith("127.") or host == "::1"
 
 
-class OpenRouterRoute:
+class CompatibleRoute:
     id = "openrouter"
     service = "OpenRouter"
     is_local = False
@@ -42,7 +42,7 @@ class OpenRouterRoute:
     def __init__(self, host: Host) -> None:
         self.host = host
         self.credentials = host.credentials()
-        self._models: list[OpenRouterModel] = []
+        self._models: list[CompatibleModel] = []
         self._models_at: str | None = None
         self._loading_at: str | None = None
         self._generation = 0
@@ -84,12 +84,12 @@ class OpenRouterRoute:
     def refresh_models(self) -> None:
         """Refresh the cache off-thread; a newer request supersedes an older one."""
         address = _base_url(self.host)
-        provider = OpenRouterProvider(base_url=address, api_key=self.credentials.get() or "")
+        provider = CompatibleProvider(base_url=address, api_key=self.credentials.get() or "")
         self._generation += 1
         generation = self._generation
         self._loading_at = address
 
-        def finished(models: list[OpenRouterModel] | None, error: BaseException | None) -> None:
+        def finished(models: list[CompatibleModel] | None, error: BaseException | None) -> None:
             if generation != self._generation:
                 return
             self._loading_at = None
@@ -101,12 +101,12 @@ class OpenRouterRoute:
 
         self.host.run_in_background(provider.models, finished)
 
-    def provider(self, ctx: RouteContext, route: Route) -> OpenRouterProvider:
+    def provider(self, ctx: RouteContext, route: Route) -> CompatibleProvider:
         """Capture the settings and key now; later ones apply to the next provider."""
         address = _base_url(self.host)
         cached = self._models if self._models_at == address else []
         known = next((model for model in cached if model.id == route.model), None)
-        return OpenRouterProvider(route.model, address, self.credentials.get() or "",
+        return CompatibleProvider(route.model, address, self.credentials.get() or "",
                                   sees_images=known.images if known else True)
 
     def draft_backend(self, ctx: RouteContext, route: Route, cancel: Any = None) -> None:

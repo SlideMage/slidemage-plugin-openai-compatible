@@ -5,11 +5,11 @@ from __future__ import annotations
 
 from slidemage.plugin_api import Host
 
-from .route import OpenRouterRoute
+from .route import CompatibleRoute
 
 
 def activate(host: Host) -> None:
     """Register without network, background work, or Qt widgets."""
-    route = OpenRouterRoute(host)
+    route = CompatibleRoute(host)
     host.add_ai_route(route)
     host.add_settings_section("ai", "OpenRouter", route.build_settings_section)

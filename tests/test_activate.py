@@ -4,8 +4,8 @@
 from __future__ import annotations
 
 from fake_host import FakeHost
-from openrouter import activate
-from openrouter.tasks import TASKS
+from openai_compatible import activate
+from openai_compatible.tasks import TASKS
 
 
 def test_activate_registers_one_route_and_one_ai_settings_section():

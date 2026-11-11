@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Stefan Palan, Jürgen Fleiß
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""OpenRouterProvider against the throwaway local server (the `server` fixture from conftest.py):
+"""CompatibleProvider against the throwaway local server (the `server` fixture from conftest.py):
 the chat request the design describes and its reply, the error messages, and the model
 capabilities kept from /models."""
 
@@ -12,7 +12,7 @@ import json
 import pytest
 
 from fake_http import sse_stream
-from openrouter.provider import OpenRouterProvider
+from openai_compatible.provider import CompatibleProvider
 
 from slidemage.plugin_api import AssistantMessage, ProviderError, ToolCall, ToolResult, ToolResultsMessage, ToolSpec, UserMessage
 
@@ -23,7 +23,7 @@ DATA_URI = "data:image/png;base64," + base64.b64encode(PNG).decode()
 def test_chat_sends_the_design_described_request_and_reads_the_reply(server):
     server.body = {"choices": [{"message": {"role": "assistant", "content": "answer"},
                                 "finish_reason": "stop"}]}
-    provider = OpenRouterProvider("deepseek/deepseek-chat", base_url=server.url, api_key="k-123")
+    provider = CompatibleProvider("deepseek/deepseek-chat", base_url=server.url, api_key="k-123")
     reply = provider.chat([{"role": "user", "content": "hi"}], system="be brief", images=[PNG],
                           schema={"type": "object"}, temperature=0.1, max_tokens=99, think=True, num_ctx=4096)
     request = server.requests[0]
@@ -48,7 +48,7 @@ def test_chat_sends_the_design_described_request_and_reads_the_reply(server):
 
 
 def test_a_refused_key_says_where_to_fix_it(server):
-    provider = OpenRouterProvider("deepseek/deepseek-chat", base_url=server.url, api_key="k-123")
+    provider = CompatibleProvider("deepseek/deepseek-chat", base_url=server.url, api_key="k-123")
     server.status, server.body = 401, {"error": {"message": "No auth credentials found"}}
     with pytest.raises(ProviderError, match="refused the API key"):
         provider.chat([{"role": "user", "content": "a"}])
@@ -61,7 +61,7 @@ def test_models_keep_the_capabilities_the_server_reports(server):
         {"id": "deepseek/deepseek-chat", "supported_parameters": ["temperature"],
          "architecture": {"input_modalities": ["text"]}},
     ]}
-    provider = OpenRouterProvider(base_url=server.url, api_key="k-123")
+    provider = CompatibleProvider(base_url=server.url, api_key="k-123")
     models = provider.models()
     assert [(model.id, model.tools, model.images) for model in models] == [
         ("anthropic/claude-sonnet-4.5", True, True),
@@ -74,7 +74,7 @@ def test_a_streamed_turn_joins_text_and_split_tool_arguments(server):
     server.content_type = "text/event-stream"
     server.body = sse_stream(pieces=("Hello", ", world"),
                              tool_calls=(("get_weather", ('{"city":', ' "Paris", ', '"unit": "c"}')),))
-    provider = OpenRouterProvider("deepseek/deepseek-chat", base_url=server.url, api_key="k-123")
+    provider = CompatibleProvider("deepseek/deepseek-chat", base_url=server.url, api_key="k-123")
     pieces: list[str] = []
     reply = provider.stream_turn(
         "be brief", [UserMessage("hi")],
@@ -93,7 +93,7 @@ def test_a_streamed_turn_joins_text_and_split_tool_arguments(server):
 def test_tool_results_and_their_images_go_out_after_the_call(server):
     server.content_type = "text/event-stream"
     server.body = sse_stream()
-    provider = OpenRouterProvider("deepseek/deepseek-chat", base_url=server.url, api_key="k-123")
+    provider = CompatibleProvider("deepseek/deepseek-chat", base_url=server.url, api_key="k-123")
     reply = provider.stream_turn(
         "be brief", [
             UserMessage("hi"),

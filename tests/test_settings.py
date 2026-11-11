@@ -6,8 +6,8 @@ from __future__ import annotations
 import pytest
 
 from fake_host import FakeHost
-from openrouter.provider import OpenRouterModel, OpenRouterProvider
-from openrouter.route import OpenRouterRoute
+from openai_compatible.provider import CompatibleModel, CompatibleProvider
+from openai_compatible.route import CompatibleRoute
 
 
 @pytest.fixture(scope="module")
@@ -23,9 +23,9 @@ def qapp():
 def test_saving_a_key_stores_it_and_refreshes_the_models(qapp, monkeypatch):
     from PySide6.QtWidgets import QLineEdit, QPushButton
 
-    monkeypatch.setattr(OpenRouterProvider, "models", lambda self: [OpenRouterModel("m1")])
+    monkeypatch.setattr(CompatibleProvider, "models", lambda self: [CompatibleModel("m1")])
     host = FakeHost()
-    page = OpenRouterRoute(host).build_settings_section()
+    page = CompatibleRoute(host).build_settings_section()
     key_field = next(e for e in page.findChildren(QLineEdit)
                      if e.echoMode() == QLineEdit.EchoMode.Password)
     save_key = next(b for b in page.findChildren(QPushButton) if b.text() == "Save key")

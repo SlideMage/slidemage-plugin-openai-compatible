@@ -4,14 +4,14 @@
 from __future__ import annotations
 
 from fake_host import FakeHost
-from openrouter.route import KEY_MESSAGE, OpenRouterRoute
-from openrouter.tasks import CHAT
+from openai_compatible.route import KEY_MESSAGE, CompatibleRoute
+from openai_compatible.tasks import CHAT
 from slidemage.plugin_api import Route
 
 
 def test_a_key_is_needed_unless_the_server_is_local():
     host = FakeHost()
-    route = OpenRouterRoute(host)
+    route = CompatibleRoute(host)
     ctx = host.context()
     route_id = Route("openrouter", CHAT, "deepseek/deepseek-chat")
     assert route.problem(ctx, route_id) == KEY_MESSAGE
