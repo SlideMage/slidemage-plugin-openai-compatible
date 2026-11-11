@@ -51,7 +51,11 @@ class OpenRouterModel:
 class OpenRouterProvider(HttpProvider):
     """A model on OpenRouter, or on another OpenAI-compatible server."""
 
-    service = "OpenRouter"
+    @property
+    def service(self) -> str:
+        """The server's name, for messages: OpenRouter itself, or the custom host."""
+        return "OpenRouter" if self.base_url == DEFAULT_BASE_URL else self.host
+
     is_local = False
 
     def __init__(self, model: str = "", base_url: str = DEFAULT_BASE_URL, api_key: str = "",

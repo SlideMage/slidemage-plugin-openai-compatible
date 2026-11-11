@@ -37,11 +37,6 @@ def _is_local(address: str) -> bool:
     return host == "localhost" or host.startswith("127.") or host == "::1"
 
 
-def _missing_model(task: str) -> str:
-    return (f"Choose an OpenRouter model for {TASK_LABELS[task].lower()} under "
-            "AI setup (the ▾ of the AI switch).")
-
-
 def _offering(task: str, models: list[OpenRouterModel]) -> list[str]:
     """The server's model ids that can do `task`; the filters apply only where the
     server reported capabilities, so an unreporting server offers every model."""
@@ -66,7 +61,8 @@ class OpenRouterRoute:
 
     def problem(self, ctx: RouteContext, route: Route) -> str:
         if not route.model:
-            return _missing_model(route.task)
+            return (f"Choose an OpenRouter model for {TASK_LABELS[route.task].lower()} "
+                    "under AI setup (the ▾ of the AI switch).")
         if not self.credentials.get() and not _is_local(_base_url(ctx)):
             return KEY_MESSAGE
         return ""

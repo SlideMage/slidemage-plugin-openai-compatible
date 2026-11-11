@@ -13,16 +13,6 @@ not list can be added under **Extra model IDs**.
 
 Your slides and prompts go to the server you set, and the model provider OpenRouter routes them to.
 
-## Development` heading, with what your plugin does: the
-   website shows that part as the plugin's description. Keep a `## Development` section; everything from
-   there on stays on GitHub.
-6. Replace `website/icon.svg` (an SVG without scripts, or `website/icon.png`, square, at least 128 px), and
-   add up to 6 screenshots as `website/screenshots/*.png` (at most 1 MB each), if you like.
-7. Start `CHANGELOG.md` with your first version, and check that the license (`LICENSE`, GPL-3.0-or-later
-   here) is the one you want; it must be GPL-compatible.
-
-Then release (below) and [submit the plugin](https://slidemage.org/plugins/submit/).
-
 ## Development
 
 SlideMage loads the package folder named after `plugin.toml`'s `id`, replacing `-` with `_`. Use relative

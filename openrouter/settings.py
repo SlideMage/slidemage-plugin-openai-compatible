@@ -43,8 +43,6 @@ def build(host: Host, route: Any) -> Widget:
 
     def key_note_text() -> str:
         where = route.credentials.where()
-        if where == "environment":
-            return "Key from the environment variable; it wins over a saved key."
         if where:
             return f"Key saved in the {where}. Sent to the base URL above."
         return "No key yet. It will be stored on this computer (keychain or a private file) and sent to the base URL above."
@@ -98,12 +96,16 @@ def build(host: Host, route: Any) -> Widget:
         status.setText("Checking connection…")
         check.setEnabled(False)
 
-        def done(models: list, error: BaseException | None) -> None:
+        def done(models: list | None, error: BaseException | None) -> None:
             if closed[0]:
                 return
             check.setEnabled(True)
+            if error is not None:
+                status.setText(str(error))
+                return
             count = len(models)
-            status.setText(f"Connected: {count} model{'s' if count != 1 else ''}." if error is None else str(error))
+            status.setText(f"Connected: {count} model{'s' if count != 1 else ''}.")
+            route.refresh_models()  # heals a model list that failed before (server not running at start)
 
         host.run_in_background(provider.models, done)
 

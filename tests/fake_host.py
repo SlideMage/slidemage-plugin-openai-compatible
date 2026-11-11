@@ -11,7 +11,6 @@ from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
-import os
 from threading import get_ident
 from typing import Any, Callable, Literal, TYPE_CHECKING
 
@@ -26,8 +25,6 @@ class FakeSettings:
     def __init__(self, values: dict | None = None) -> None:
         self.values = deepcopy(values or {})
         self.saved = deepcopy(self.values)
-        self.save_count = 0
-        self.save_error: OSError | None = None
 
     def get(self, key, default=None):
         return self.values.get(key, default)
@@ -36,10 +33,7 @@ class FakeSettings:
         self.values[key] = deepcopy(value)
 
     def save(self) -> None:
-        if self.save_error is not None:
-            raise self.save_error
         self.saved = deepcopy(self.values)
-        self.save_count += 1
 
 
 @dataclass
@@ -77,12 +71,8 @@ class FakeHost:
         self.sections: list[Section] = []
         self.pending: list[tuple[Callable, Callable]] = []
         self.logs: list[str] = []
-        self.messages: list[tuple[str, bool]] = []
         self.background_error: Exception | None = None
         self.changed_routes: list[str] = []
-        self.legacy_address: str | None = None
-        self.route_tasks: dict[str, str] = {}
-        self.deliver_progress: Callable[[], None] = lambda: None
         self._active = True
         self._ui_thread = get_ident()
 
@@ -131,57 +121,16 @@ class FakeHost:
     def context(self) -> RouteContext:
         return RouteContext(root=Path("/project"), settings=self.store, cache_dir=Path("/cache"),
                             legacy_cache_dir=None, credentials=lambda *_: None,
-                            legacy_secret=lambda *_: None, legacy_ollama_host=self.legacy_ollama_host,
+                            legacy_secret=lambda *_: None, legacy_ollama_host=lambda: "",
                             de_address="", glossary="")
-
-    def legacy_ollama_host(self) -> str:
-        self._check_ui()
-        return self.legacy_address or os.environ.get("OLLAMA_HOST") or "http://localhost:11434"
 
     def model_choices_changed(self, route_id: str) -> None:
         self._check_ui()
         self.changed_routes.append(route_id)
 
-    def acquire_route_task(self, route_id: str, label: str):
-        self._check_ui()
-        if route_id in self.route_tasks:
-            self.show_message(f"Ollama is busy: {self.route_tasks[route_id]}", error=True)
-            return None
-        self.route_tasks[route_id] = label
-        host = self
-
-        class Lease:
-            def release(self):
-                host._check_ui()
-                host.route_tasks.pop(route_id, None)
-
-        return Lease()
-
-    def run_in_background_with_progress(self, work, progress, done) -> None:
-        reports = []
-
-        def run():
-            return work(reports.append)
-
-        def deliver():
-            while reports:
-                progress(reports.pop(0))
-
-        def finished(result, error):
-            deliver()
-            done(result, error)
-
-        self.deliver_progress = deliver  # lets a test see the page between progress and done
-
-        self.run_in_background(run, finished)
-
     def log(self, message) -> None:
         self._check_ui()
         self.logs.append(message)
-
-    def show_message(self, text, error=False) -> None:
-        self._check_ui()
-        self.messages.append((text, error))
 
     def Page(self):
         from PySide6.QtCore import Signal
