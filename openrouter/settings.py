@@ -16,23 +16,27 @@ def build(host: Host, route: OpenRouterRoute) -> Widget:
     page = host.Page()
     settings = host.settings()
 
-    url_field = QLineEdit()
-    saved_url = settings.get("base_url")
-    url_field.setText(saved_url if isinstance(saved_url, str) else "")
-    url_field.setPlaceholderText(DEFAULT_BASE_URL)
+    def text_setting(key: str, label: str, placeholder: str, after_save) -> QLineEdit:
+        """A line edit for one string setting, saved when editing finishes and the text changed."""
+        field = QLineEdit()
+        saved = settings.get(key)
+        field.setText(saved if isinstance(saved, str) else "")
+        field.setPlaceholderText(placeholder)
 
-    def save_base_url() -> None:
-        text = url_field.text().strip()
-        saved = settings.get("base_url")
-        if text == (saved if isinstance(saved, str) else ""):
-            return
-        settings.set("base_url", text)
-        settings.save()
-        route.refresh_models()
-        page.changed.emit()
+        def save() -> None:
+            text, saved = field.text().strip(), settings.get(key)
+            if text == (saved if isinstance(saved, str) else ""):
+                return
+            settings.set(key, text)
+            settings.save()
+            after_save()
+            page.changed.emit()
 
-    url_field.editingFinished.connect(save_base_url)
-    page.body.addWidget(host.Field("Base URL", url_field))
+        field.editingFinished.connect(save)
+        page.body.addWidget(host.Field(label, field))
+        return field
+
+    url_field = text_setting("base_url", "Base URL", DEFAULT_BASE_URL, route.refresh_models)
 
     key_field = QLineEdit()
     key_field.setEchoMode(QLineEdit.EchoMode.Password)
@@ -64,23 +68,8 @@ def build(host: Host, route: OpenRouterRoute) -> Widget:
     page.body.addWidget(key_note)
     page.body.addWidget(save_key_button)
 
-    extra_field = QLineEdit()
-    saved_extra = settings.get("extra_models")
-    extra_field.setText(saved_extra if isinstance(saved_extra, str) else "")
-    extra_field.setPlaceholderText("optional: model-id, another-model-id")
-
-    def save_extra_models() -> None:
-        text = extra_field.text().strip()
-        saved = settings.get("extra_models")
-        if text == (saved if isinstance(saved, str) else ""):
-            return
-        settings.set("extra_models", text)
-        settings.save()
-        host.model_choices_changed(route.id)
-        page.changed.emit()
-
-    extra_field.editingFinished.connect(save_extra_models)
-    page.body.addWidget(host.Field("Extra model IDs", extra_field))
+    text_setting("extra_models", "Extra model IDs", "optional: model-id, another-model-id",
+                 lambda: host.model_choices_changed(route.id))
 
     status = host.caption("")
     check = QPushButton("Check connection")

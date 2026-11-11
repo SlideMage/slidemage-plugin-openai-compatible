@@ -63,7 +63,7 @@ def test_models_keep_the_capabilities_the_server_reports(server):
     ]}
     provider = OpenRouterProvider(base_url=server.url, api_key="k-123")
     models = provider.models()
-    assert [(model.id, model.supports_tools, model.sees_images) for model in models] == [
+    assert [(model.id, model.tools, model.images) for model in models] == [
         ("anthropic/claude-sonnet-4.5", True, True),
         ("deepseek/deepseek-chat", False, False),
     ]

@@ -15,7 +15,6 @@ from __future__ import annotations
 import base64
 import json
 import urllib.parse
-import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -33,19 +32,11 @@ Message = dict[str, str]
 
 @dataclass
 class OpenRouterModel:
-    """One model from /models, with the capabilities OpenRouter reports about it."""
+    """One model from /models. A capability the server does not report counts as present."""
 
     id: str
-    supported_parameters: tuple[str, ...] = ()
-    input_modalities: tuple[str, ...] = ()
-
-    @property
-    def supports_tools(self) -> bool:
-        return "tools" in self.supported_parameters
-
-    @property
-    def sees_images(self) -> bool:
-        return "image" in self.input_modalities
+    tools: bool = True
+    images: bool = True
 
 
 class OpenRouterProvider(HttpProvider):
@@ -122,15 +113,14 @@ class OpenRouterProvider(HttpProvider):
         """The server's models, with the capabilities it reports about each. Raises ProviderError."""
         status, raw = self._send("GET", self.base_url, "/models", headers=self._headers(), payload=None, timeout=10)
         body = self._json(status, raw, self._describe_error)
-        return [
-            OpenRouterModel(
-                id=entry["id"],
-                supported_parameters=tuple(entry.get("supported_parameters") or ()),
-                input_modalities=tuple((entry.get("architecture") or {}).get("input_modalities") or ()),
-            )
-            for entry in body.get("data") or ()
-            if entry.get("id")
-        ]
+        models = []
+        for entry in body.get("data") or ():
+            if entry.get("id"):
+                parameters = entry.get("supported_parameters")
+                modalities = (entry.get("architecture") or {}).get("input_modalities")
+                models.append(OpenRouterModel(entry["id"], tools=not parameters or "tools" in parameters,
+                                              images=not modalities or "image" in modalities))
+        return models
 
     def list_models(self) -> list[str]:
         """The model ids to offer; [] when the server cannot be asked."""
@@ -196,8 +186,6 @@ class OpenRouterProvider(HttpProvider):
                     call = calls.setdefault(entry.get("index", 0), {"id": "", "name": "", "arguments": ""})
                     if entry.get("id"):
                         call["id"] = entry["id"]
-                    if not call["id"]:
-                        call["id"] = f"call_{uuid.uuid4().hex[:12]}"
                     if entry.get("function", {}).get("name"):
                         call["name"] = entry["function"]["name"]
                     if entry.get("function", {}).get("arguments"):
@@ -212,8 +200,8 @@ class OpenRouterProvider(HttpProvider):
             raise ProviderError(f"{self.host} ended the answer early.")
         return AssistantMessage(
             text="".join(text),
-            tool_calls=[ToolCall(call["id"], call["name"], _parsed_arguments(call["arguments"]))
-                        for _, call in sorted(calls.items())],
+            tool_calls=[ToolCall(call["id"] or f"call_{index}", call["name"], _parsed_arguments(call["arguments"]))
+                        for index, call in sorted(calls.items())],
             stop="max_tokens" if finish_reason == "length"
                  else "refusal" if finish_reason == "content_filter"
                  else "tool_use" if calls else "end_turn",
