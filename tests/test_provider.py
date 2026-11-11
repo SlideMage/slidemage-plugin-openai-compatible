@@ -7,12 +7,14 @@ capabilities kept from /models."""
 from __future__ import annotations
 
 import base64
+import json
 
 import pytest
 
+from fake_http import sse_stream
 from openrouter.provider import OpenRouterProvider
 
-from slidemage.plugin_api import ProviderError
+from slidemage.plugin_api import AssistantMessage, ProviderError, ToolCall, ToolResult, ToolResultsMessage, ToolSpec, UserMessage
 
 PNG = b"\x89PNG\r\n\x1a\nfake"
 DATA_URI = "data:image/png;base64," + base64.b64encode(PNG).decode()
@@ -66,3 +68,47 @@ def test_models_keep_the_capabilities_the_server_reports(server):
         ("deepseek/deepseek-chat", False, False),
     ]
     assert provider.list_models() == ["anthropic/claude-sonnet-4.5", "deepseek/deepseek-chat"]
+
+
+def test_a_streamed_turn_joins_text_and_split_tool_arguments(server):
+    server.content_type = "text/event-stream"
+    server.body = sse_stream(pieces=("Hello", ", world"),
+                             tool_calls=(("get_weather", ('{"city":', ' "Paris", ', '"unit": "c"}')),))
+    provider = OpenRouterProvider("deepseek/deepseek-chat", base_url=server.url, api_key="k-123")
+    pieces: list[str] = []
+    reply = provider.stream_turn(
+        "be brief", [UserMessage("hi")],
+        [ToolSpec(name="get_weather", description="The weather of a city", schema={"type": "object"})],
+        pieces.append)
+    request = server.requests[0]
+    assert (request["method"], request["path"]) == ("POST", "/chat/completions")
+    assert request["body"]["stream"] is True
+    assert reply.text == "Hello, world"
+    assert pieces == ["Hello", ", world"]
+    assert [(call.id, call.name, call.input) for call in reply.tool_calls] == [
+        ("call_0", "get_weather", {"city": "Paris", "unit": "c"})]
+    assert (reply.stop, reply.usage) == ("tool_use", {"input": 12, "output": 5})
+
+
+def test_tool_results_and_their_images_go_out_after_the_call(server):
+    server.content_type = "text/event-stream"
+    server.body = sse_stream()
+    provider = OpenRouterProvider("deepseek/deepseek-chat", base_url=server.url, api_key="k-123")
+    reply = provider.stream_turn(
+        "be brief", [
+            UserMessage("hi"),
+            AssistantMessage(tool_calls=[ToolCall("call_0", "get_weather", {"city": "Paris"})]),
+            ToolResultsMessage([ToolResult("call_0", "15 C", images=[PNG])]),
+        ], [], lambda _text: None)
+    assert server.requests[0]["body"]["messages"] == [
+        {"role": "system", "content": "be brief"},
+        {"role": "user", "content": "hi"},
+        {"role": "assistant", "content": "", "tool_calls": [
+            {"id": "call_0", "type": "function",
+             "function": {"name": "get_weather", "arguments": json.dumps({"city": "Paris"})}}]},
+        {"role": "tool", "tool_call_id": "call_0", "content": "15 C"},
+        {"role": "user", "content": [
+            {"type": "text", "text": "The image from the tool above:"},
+            {"type": "image_url", "image_url": {"url": DATA_URI}}]},
+    ]
+    assert (reply.text, reply.stop) == ("", "end_turn")

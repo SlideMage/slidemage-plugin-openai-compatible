@@ -284,6 +284,24 @@ def ollama_ndjson(pieces=(), tool_calls=(), done_reason: str = "stop") -> str:
     return "".join(json.dumps(line) + "\n" for line in lines)
 
 
+def sse_stream(pieces=(), tool_calls=(), finish_reason: str = "stop") -> str:
+    """The lines of an OpenAI-compatible /chat/completions SSE stream: one chunk per text piece, then one
+    chunk per tool-call argument piece (the first carrying the call's id, type and name; tool_calls are
+    (name, argument pieces) pairs), then a chunk with the finish reason, then the usage chunk, then [DONE]."""
+    lines: list[dict] = [{"choices": [{"delta": {"content": piece}}]} for piece in pieces]
+    for index, (name, argument_pieces) in enumerate(tool_calls):
+        for position, arguments in enumerate(argument_pieces):
+            entry: dict = {"index": index, "function": {"arguments": arguments}}
+            if position == 0:
+                entry["id"] = f"call_{index}"
+                entry["type"] = "function"
+                entry["function"]["name"] = name
+            lines.append({"choices": [{"delta": {"tool_calls": [entry]}}]})
+    lines.append({"choices": [{"delta": {}, "finish_reason": finish_reason}]})
+    lines.append({"choices": [], "usage": {"prompt_tokens": 12, "completion_tokens": 5}})
+    return "".join(f"data: {json.dumps(line)}\n\n" for line in lines) + "data: [DONE]\n\n"
+
+
 def wait_for_first_piece(thread, texts, seconds=5.0):
     """Until the streaming thread has handed over its first text; fails instead of spinning when it ended without."""
     end = time.monotonic() + seconds
