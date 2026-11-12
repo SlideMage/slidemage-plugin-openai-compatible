@@ -1,6 +1,6 @@
 id = "openai-compatible"
 name = "OpenAI-compatible"
-version = "1.0.0"
+version = "0.9.0"
 api_version = 1
 requires_slidemage = ">=9.1"
 summary = "OpenAI, Mistral, OpenRouter, LM Studio or any other OpenAI-compatible server: your key, your model."
